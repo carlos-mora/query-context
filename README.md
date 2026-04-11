@@ -34,11 +34,11 @@ agnóstica que se puede consumir desde cualquier cliente.
 // En el modelo:
 use CarlosMora\QueryContext\Concerns\HasContextFilter;
 
-class Media extends Model
+class Post extends Model
 {
     use HasContextFilter;
 
-    protected array $searchColumns   = ['title', 'description'];
+    protected array $searchColumns   = ['title', 'body'];
     protected array $filterProtected = ['password'];
 }
 
@@ -49,9 +49,9 @@ use CarlosMora\QueryContext\QueryContext;
 public function index(Request $request)
 {
     $context = QueryContext::fromRequest($request);
-    $query   = Media::query()->applyContext($context);
+    $query   = Post::query()->applyContext($context);
 
-    return ContextResult::of($query, $context, MediaResource::class);
+    return ContextResult::of($query, $context, PostResource::class);
 }
 ```
 
@@ -61,18 +61,16 @@ public function index(Request $request)
 
 ```json
 {
-    "fields":   ["id", "name", "folder:*", "users.id", "users.email", "posts:title,content", "count(tags)"],
+    "fields":   ["id", "title", "author:*", "tags.id", "tags.name", "comments:body,created_at", "count(likes)"],
     "page":     1,
     "perPage":  25,
-    "sortBy":   "name",
-    "sortDesc": false,
-    "search":   "texto a buscar",
+    "sortBy":   "created_at",
+    "sortDesc": true,
+    "search":   "laravel",
     "filters": {
-        "status":     "active",
-        "age":        { "ge": 18, "le": 65 },
-        "type":       { "in": [1, 2, 3] },
-        "deleted_at": { "isNull": true },
-        "title":      { "like": ["foo", "bar"] }
+        "status":     "published",
+        "created_at": { "ge": "2024-01-01" },
+        "category_id": { "in": [1, 2, 3] }
     },
     "scopes": [
         { "published": [] },
@@ -83,47 +81,251 @@ public function index(Request $request)
 
 ---
 
-## Referencia de parámetros
+## `fields` — columnas y relaciones
 
-### `fields`
+Array de tokens. Cada elemento se clasifica por su sintaxis:
 
-Array de tokens que define qué columnas devolver y qué relaciones cargar.
+| Sintaxis | Equivalente Eloquent | Descripción |
+|----------|----------------------|-------------|
+| `"id"` | `select('id')` | columna del modelo principal |
+| `"relation:*"` | `with('relation')` | relación completa (todos los campos) |
+| `"relation:col1,col2"` | `with('relation:col1,col2')` | relación con columnas específicas |
+| `"relation.column"` | `with('relation:column')` | notación punto, se agrupa por relación |
+| `"count(relation)"` | `withCount('relation')` | contador de la relación |
 
-| Sintaxis | Resultado |
-|----------|-----------|
-| `"id"` | columna SELECT del modelo principal |
-| `"relation:*"` | `with('relation')` — todos los campos |
-| `"relation:col1,col2"` | `with('relation:col1,col2')` — columnas específicas |
-| `"relation.column"` | notación punto, se agrupa por relación |
-| `"count(relation)"` | `withCount('relation')` |
+Si se omite `fields` se aplica `SELECT *` sin relaciones.
 
-**Ejemplo:**
+### Ejemplo de request
+
 ```json
-"fields": ["id", "name", "folder:*", "users.id", "users.email", "posts:title,content", "count(tags)"]
-```
-Equivale a:
-```
-SELECT id, name
-with(['folder', 'users:id,email', 'posts:title,content'])
-withCount(['tags'])
+"fields": [
+    "id", "title", "created_at",
+    "author:id,name,email",
+    "tags.id", "tags.name",
+    "comments:body,created_at",
+    "count(likes)"
+]
 ```
 
-> Si se omite `fields` se aplica `SELECT *` sin relaciones.
+Equivale a:
+```php
+Post::query()
+    ->select(['id', 'title', 'created_at'])
+    ->with(['author:id,name,email', 'tags:id,name', 'comments:body,created_at'])
+    ->withCount(['likes'])
+```
+
+### Respuesta JSON resultante
+
+Con `perPage` (paginado):
+
+```json
+{
+    "data": [
+        {
+            "id": 1,
+            "title": "Introducción a Laravel",
+            "created_at": "2024-03-15T10:00:00Z",
+            "author": {
+                "id": 7,
+                "name": "Ana García",
+                "email": "ana@example.com"
+            },
+            "tags": [
+                { "id": 2, "name": "Laravel" },
+                { "id": 5, "name": "PHP" }
+            ],
+            "comments": [
+                { "body": "Muy buen artículo", "created_at": "2024-03-16T08:30:00Z" }
+            ],
+            "likes_count": 142
+        }
+    ],
+    "links": {
+        "first": "https://api.example.com/posts?page=1",
+        "last":  "https://api.example.com/posts?page=12",
+        "prev":  null,
+        "next":  "https://api.example.com/posts?page=2"
+    },
+    "meta": {
+        "current_page": 1,
+        "from":         1,
+        "last_page":    12,
+        "per_page":     25,
+        "to":           25,
+        "total":        287
+    }
+}
+```
+
+Sin `perPage` (listado completo):
+
+```json
+{
+    "data": [
+        { "id": 1, "title": "...", "author": { ... }, "tags": [...], "likes_count": 142 },
+        { "id": 2, "title": "...", "author": { ... }, "tags": [...], "likes_count": 37 }
+    ]
+}
+```
+
+> `likes_count` aparece como atributo en cada ítem gracias a `withCount`. Laravel lo nombra
+> automáticamente como `{relation}_count`.
 
 ---
 
-### `page` / `perPage`
+## `filters` — filtrado de datos
+
+### Formato plano — AND implícito
+
+Todas las condiciones al mismo nivel se combinan con AND:
+
+```json
+{
+    "status":      "published",
+    "category_id": { "in": [1, 2] },
+    "created_at":  { "ge": "2024-01-01", "le": "2024-12-31" },
+    "deleted_at":  { "isNull": true }
+}
+```
+Genera:
+```sql
+WHERE status = 'published'
+  AND category_id IN (1, 2)
+  AND created_at >= '2024-01-01'
+  AND created_at <= '2024-12-31'
+  AND deleted_at IS NULL
+```
+
+### Operadores de columna
+
+| Clave | SQL generado | Notas |
+|-------|-------------|-------|
+| escalar (`"active"`) | `= 'active'` | igualdad directa |
+| `eq` | `= value` | igualdad explícita, útil dentro de grupos |
+| `gt` | `> value` | mayor que |
+| `lt` | `< value` | menor que |
+| `ge` | `>= value` | mayor o igual que |
+| `le` | `<= value` | menor o igual que |
+| `in` | `IN (...)` | acepta array |
+| `nin` | `NOT IN (...)` | acepta array |
+| `isNull: true` | `IS NULL` | — |
+| `isNull: false` | `IS NOT NULL` | — |
+| `like` | `LIKE '%v%'` | contiene; array → OR entre términos |
+| `rlike` / `startsWith` | `LIKE 'v%'` | empieza por; acepta array |
+| `llike` / `endsWith` | `LIKE '%v'` | termina en; acepta array |
+
+### `like` con múltiples términos
+
+```json
+{ "title": { "like": ["laravel", "eloquent"] } }
+```
+Genera: `WHERE (title LIKE '%laravel%' OR title LIKE '%eloquent%')`
+
+### Operadores lógicos `and` / `or` / `not`
+
+Los operadores lógicos permiten construir condiciones compuestas de cualquier profundidad.
+Son anidables entre sí.
+
+#### `or` — al menos una condición se cumple
+
+```json
+{
+    "or": [
+        { "status": "featured" },
+        { "likes_count": { "gt": 1000 } }
+    ]
+}
+```
+Genera: `WHERE (status = 'featured' OR likes_count > 1000)`
+
+#### `and` — todas las condiciones se cumplen (útil dentro de un `or`)
+
+```json
+{
+    "or": [
+        { "and": [{ "status": "published" }, { "category_id": { "in": [1, 2] } }] },
+        { "and": [{ "status": "featured"  }, { "category_id": { "in": [3, 4] } }] }
+    ]
+}
+```
+Genera:
+```sql
+WHERE (status = 'published' AND category_id IN (1, 2))
+   OR (status = 'featured'  AND category_id IN (3, 4))
+```
+
+#### `not` — niega el grupo de condiciones
+
+```json
+{ "not": { "status": { "in": ["draft", "deleted"] } } }
+```
+Genera: `WHERE NOT (status IN ('draft', 'deleted'))`
+
+```json
+{ "not": { "and": [{ "role": "guest" }, { "verified": { "eq": false } }] } }
+```
+Genera: `WHERE NOT (role = 'guest' AND verified = 0)`
+
+#### Combinación avanzada: `or` de grupos `and` con `not`
+
+```json
+{
+    "or": [
+        {
+            "and": [
+                { "published_at": { "isNull": false } },
+                { "category_id": { "in": [1, 2, 3] } }
+            ]
+        },
+        {
+            "and": [
+                { "status": "featured" },
+                { "not": { "author_id": { "in": [99, 100] } } }
+            ]
+        }
+    ]
+}
+```
+Genera:
+```sql
+WHERE (published_at IS NOT NULL AND category_id IN (1, 2, 3))
+   OR (status = 'featured' AND NOT (author_id IN (99, 100)))
+```
+
+#### Mezcla de formato plano y grupos lógicos
+
+El formato plano puede coexistir con grupos en el mismo objeto. Las claves planas se
+combinan con AND entre sí y con los grupos:
+
+```json
+{
+    "status": "active",
+    "or": [
+        { "role": "admin" },
+        { "role": "editor" }
+    ]
+}
+```
+Genera: `WHERE status = 'active' AND (role = 'admin' OR role = 'editor')`
+
+> `and`, `or` y `not` son claves reservadas y no pueden usarse como nombres de columna.
+
+---
+
+## `page` / `perPage`
 
 | Parámetro | Tipo    | Por defecto | Restricciones   |
 |-----------|---------|-------------|-----------------|
 | `page`    | integer | `1`         | mínimo: `1`     |
 | `perPage` | integer | `null`      | entre `1`–`500` |
 
-Si `perPage` se omite no se aplica paginación y se devuelve el resultado completo.
+Si `perPage` se omite no se aplica paginación y se devuelve el resultado completo sin
+metadata de paginación.
 
 ---
 
-### `sortBy` / `sortDesc`
+## `sortBy` / `sortDesc`
 
 | Parámetro  | Tipo    | Por defecto |
 |------------|---------|-------------|
@@ -132,68 +334,29 @@ Si `perPage` se omite no se aplica paginación y se devuelve el resultado comple
 
 ---
 
-### `search`
+## `search`
 
-Cadena de texto (máximo 255 caracteres). Se aplica `LIKE %term%` sobre las columnas
-declaradas en `$searchColumns` del modelo.
+Cadena de texto (máximo 255 caracteres). Aplica `WHERE (col1 LIKE %term% OR col2 LIKE %term%)`
+sobre las columnas declaradas en `$searchColumns` del modelo.
+
+```php
+protected array $searchColumns = ['title', 'body', 'excerpt'];
+```
 
 ---
 
-### `filters`
+## `scopes`
 
-Filtrado plano (AND implícito) o lógica AND/OR/NOT anidada.
-
-#### Formato plano
+Llama a named scopes de Eloquent con los parámetros indicados:
 
 ```json
-{ "status": "active", "age": { "ge": 18, "le": 65 } }
+"scopes": [
+    { "published": [] },
+    { "ownedBy": [42] },
+    { "withMinScore": [7.5] }
+]
 ```
-Genera: `WHERE status = 'active' AND age >= 18 AND age <= 65`
-
-#### Operadores de columna
-
-| Clave | Operador SQL | Descripción |
-|-------|-------------|-------------|
-| escalar | `= value` | igualdad exacta |
-| `eq` | `= value` | igualdad explícita |
-| `gt` | `>` | mayor que |
-| `lt` | `<` | menor que |
-| `ge` | `>=` | mayor o igual que |
-| `le` | `<=` | menor o igual que |
-| `in` | `IN (...)` | valor en lista |
-| `nin` | `NOT IN (...)` | valor fuera de lista |
-| `isNull` | `IS NULL / NOT NULL` | nulo o no nulo |
-| `like` | `LIKE '%v%'` | contiene — acepta array (OR entre términos) |
-| `rlike` / `startsWith` | `LIKE 'v%'` | empieza por — acepta array |
-| `llike` / `endsWith` | `LIKE '%v'` | termina en — acepta array |
-
-#### Operadores lógicos `and` / `or` / `not`
-
-```json
-{
-    "or": [
-        { "and": [{ "age": { "gt": 25 } }, { "active": { "eq": true } }] },
-        { "and": [{ "age": { "gt": 30 } }, { "active": { "eq": false } }] }
-    ]
-}
-```
-Genera: `WHERE (age > 25 AND active = 1) OR (age > 30 AND active = 0)`
-
-```json
-{ "not": { "status": { "in": ["draft", "deleted"] } } }
-```
-Genera: `WHERE NOT (status IN ('draft', 'deleted'))`
-
-> `and`, `or` y `not` son claves reservadas; no pueden usarse como nombres de columna.
-
----
-
-### `scopes`
-
-```json
-"scopes": [{ "published": [] }, { "ownedBy": [42] }]
-```
-Equivale a: `->published()->ownedBy(42)`
+Equivale a: `->published()->ownedBy(42)->withMinScore(7.5)`
 
 ---
 
@@ -201,8 +364,8 @@ Equivale a: `->published()->ownedBy(42)`
 
 ### `QueryContext`
 
-DTO inmutable construido a partir de la request. Lanza `ValidationException` si algún
-parámetro no cumple las reglas.
+DTO inmutable construido y validado a partir de la request. Lanza `ValidationException`
+si algún parámetro no cumple las reglas.
 
 ```php
 $context = QueryContext::fromRequest($request);
@@ -213,15 +376,18 @@ $context = QueryContext::fromRequest($request);
 Trait para modelos Eloquent. Añade el scope `applyContext()`.
 
 ```php
-class Media extends Model
+class Post extends Model
 {
     use HasContextFilter;
 
-    protected array $searchColumns   = ['title', 'description'];
-    protected array $filterProtected = ['password'];
+    // Columnas donde se aplica la búsqueda con LIKE
+    protected array $searchColumns = ['title', 'body'];
+
+    // Columnas que nunca se filtran aunque vengan en el payload
+    protected array $filterProtected = ['password', 'remember_token'];
 }
 
-Media::query()->applyContext($context)->get();
+Post::query()->applyContext($context)->get();
 ```
 
 ### `ContextResult`
@@ -230,25 +396,28 @@ Ejecuta la query y devuelve una `AnonymousResourceCollection` con paginación au
 
 ```php
 // Con resource propio:
-return ContextResult::of($query, $context, MediaResource::class);
+return ContextResult::of($query, $context, PostResource::class);
 
-// Sin resource específico:
+// Sin resource específico (devuelve los atributos del modelo tal cual):
 return ContextResult::of($query, $context);
 ```
 
-Si `perPage` está definido usa `paginate()` e incluye automáticamente la metadata de
-Laravel (`total`, `current_page`, `last_page`, `per_page`, etc.).
+Si `perPage` está definido usa `paginate()` y la respuesta incluye automáticamente la
+metadata de paginación de Laravel en la clave `meta` y los links en `links`.
 
 ### `QueryContextRequest`
 
-FormRequest alternativo a `QueryContext::fromRequest()` para usar directamente como
-parámetro del controlador:
+FormRequest alternativo para inyectar directamente en el controlador:
 
 ```php
+use CarlosMora\QueryContext\Requests\QueryContextRequest;
+
 public function index(QueryContextRequest $request)
 {
     $context = $request->toQueryContext();
-    // ...
+    $query   = Post::query()->applyContext($context);
+
+    return ContextResult::of($query, $context, PostResource::class);
 }
 ```
 
