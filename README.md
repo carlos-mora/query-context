@@ -212,15 +212,27 @@ WHERE status = 'published'
 | `isNull: true` | `IS NULL` | — |
 | `isNull: false` | `IS NOT NULL` | — |
 | `like` | `LIKE '%v%'` | contiene; array → OR entre términos |
-| `rlike` / `startsWith` | `LIKE 'v%'` | empieza por; acepta array |
-| `llike` / `endsWith` | `LIKE '%v'` | termina en; acepta array |
+| `rlike` / `startsWith` | `LIKE 'v%'` | empieza por; array → OR entre términos |
+| `llike` / `endsWith` | `LIKE '%v'` | termina en; array → OR entre términos |
 
-### `like` con múltiples términos
+### `like`, `startsWith`, `endsWith` con múltiples términos
+
+Cuando el valor es un array, los términos se combinan con OR dentro de un grupo:
 
 ```json
 { "title": { "like": ["laravel", "eloquent"] } }
 ```
 Genera: `WHERE (title LIKE '%laravel%' OR title LIKE '%eloquent%')`
+
+```json
+{ "code": { "startsWith": ["ES", "PT", "FR"] } }
+```
+Genera: `WHERE (code LIKE 'ES%' OR code LIKE 'PT%' OR code LIKE 'FR%')`
+
+```json
+{ "filename": { "endsWith": [".jpg", ".png", ".webp"] } }
+```
+Genera: `WHERE (filename LIKE '%.jpg' OR filename LIKE '%.png' OR filename LIKE '%.webp')`
 
 ### Operadores lógicos `and` / `or` / `not`
 
