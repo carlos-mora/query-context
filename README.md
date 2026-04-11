@@ -405,6 +405,40 @@ return ContextResult::of($query, $context);
 Si `perPage` está definido usa `paginate()` y la respuesta incluye automáticamente la
 metadata de paginación de Laravel en la clave `meta` y los links en `links`.
 
+### `QueryContextCollection`
+
+Clase base para collections que elimina el array `meta.links` (URLs numeradas de
+paginación) de la respuesta, dejando solo los metadatos útiles: `current_page`,
+`last_page`, `per_page`, `total`, `from`, `to`.
+
+```php
+use CarlosMora\QueryContext\QueryContextCollection;
+
+class PostCollection extends QueryContextCollection
+{
+    public $collects = PostResource::class;
+}
+```
+
+```php
+return ContextResult::of($query, $context, PostCollection::class);
+```
+
+La respuesta `meta` queda así:
+
+```json
+"meta": {
+    "current_page": 1,
+    "from":         1,
+    "last_page":    12,
+    "per_page":     25,
+    "to":           25,
+    "total":        287
+}
+```
+
+---
+
 ### `QueryContextRequest`
 
 FormRequest alternativo para inyectar directamente en el controlador:
