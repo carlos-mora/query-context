@@ -1,0 +1,24 @@
+{
+    "name": "carlos-mora/query-context",
+    "description": "Generic QueryContext filtering, sorting and pagination for Laravel Eloquent models",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.2",
+        "laravel/framework": "^11.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0",
+        "phpunit/phpunit": "^10.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "CarlosMora\\QueryContext\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "CarlosMora\\QueryContext\\Tests\\": "tests/"
+        }
+    }
+}
