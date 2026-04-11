@@ -117,7 +117,14 @@ trait HasContextFilter
             return;
         }
 
-        $query->orderBy($context->sortBy, $context->sortDesc ? 'DESC' : 'ASC');
+        $direction  = $context->sortDesc ? 'DESC' : 'ASC';
+        $primaryKey = $this->getKeyName();
+
+        $query->orderBy($context->sortBy, $direction);
+
+        if ($context->sortBy !== $primaryKey) {
+            $query->orderBy($primaryKey, $direction);
+        }
     }
 
     private function applyFields(Builder $query, QueryContext $context): void

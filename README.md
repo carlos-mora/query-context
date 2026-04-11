@@ -344,6 +344,23 @@ metadata de paginación.
 | `sortBy`   | string  | `null`      |
 | `sortDesc` | boolean | `false`     |
 
+Cuando se indica `sortBy`, la primary key del modelo se añade automáticamente como
+criterio de ordenación secundario (tiebreaker), garantizando un orden consistente en la
+paginación cuando varios registros tienen el mismo valor en la columna de ordenación.
+
+```json
+{ "sortBy": "name" }
+```
+Genera: `ORDER BY name ASC, id ASC`
+
+```json
+{ "sortBy": "name", "sortDesc": true }
+```
+Genera: `ORDER BY name DESC, id DESC`
+
+Si `sortBy` ya apunta a la primary key no se duplica. En modelos con primary key
+distinta de `id` se usa la clave correcta automáticamente.
+
 ---
 
 ## `search`
