@@ -211,9 +211,18 @@ WHERE status = 'published'
 | `nin` | `NOT IN (...)` | acepta array |
 | `isNull: true` | `IS NULL` | — |
 | `isNull: false` | `IS NOT NULL` | — |
-| `like` | `LIKE '%v%'` | contiene; array → OR entre términos |
-| `rlike` / `startsWith` | `LIKE 'v%'` | empieza por; array → OR entre términos |
-| `llike` / `endsWith` | `LIKE '%v'` | termina en; array → OR entre términos |
+| `like` | `LIKE '%v%'` | contiene; array → OR entre términos; sin distinguir mayúsculas |
+| `rlike` / `startsWith` | `LIKE 'v%'` | empieza por; array → OR entre términos; sin distinguir mayúsculas |
+| `llike` / `endsWith` | `LIKE '%v'` | termina en; array → OR entre términos; sin distinguir mayúsculas |
+
+### Mayúsculas y minúsculas
+
+`like`, `startsWith`, `endsWith` y `search` no distinguen mayúsculas en ningún motor. Usan
+`whereLike(..., caseSensitive: false)` de Laravel (≥ 11.17), que cada gramática traduce a lo suyo:
+`ILIKE` en PostgreSQL y `LIKE` en MySQL/MariaDB y SQLite, donde ya no distinguen mayúsculas.
+
+Los acentos sí se distinguen en PostgreSQL ("camion" no encuentra "Camión"). En MySQL depende de la
+collation de la columna (`utf8mb4_0900_ai_ci` los ignora).
 
 ### `like`, `startsWith`, `endsWith` con múltiples términos
 
@@ -365,7 +374,7 @@ distinta de `id` se usa la clave correcta automáticamente.
 
 ## `search`
 
-Cadena de texto (máximo 255 caracteres). Aplica `WHERE (col1 LIKE %term% OR col2 LIKE %term%)`
+Cadena de texto (máximo 255 caracteres). Aplica `WHERE (col1 LIKE %term% OR col2 LIKE %term%)`, sin distinguir mayúsculas
 sobre las columnas declaradas en `$searchColumns` del modelo.
 
 ```php
@@ -409,7 +418,7 @@ class Post extends Model
 {
     use HasContextFilter;
 
-    // Columnas donde se aplica la búsqueda con LIKE
+    // Columnas donde se aplica la búsqueda (LIKE sin distinguir mayúsculas)
     protected array $searchColumns = ['title', 'body'];
 
     // Columnas que nunca se filtran aunque vengan en el payload

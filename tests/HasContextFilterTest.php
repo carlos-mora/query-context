@@ -89,4 +89,31 @@ class HasContextFilterTest extends TestCase
         $this->assertStringContainsString('"uuid"', $sql);
         $this->assertStringNotContainsString('"id"', $sql);
     }
+
+    // ── applySearch ───────────────────────────────────────────────────────
+
+    public function test_search_is_case_insensitive_on_postgres(): void
+    {
+        // Solo se compila el SQL: no hace falta un servidor PostgreSQL.
+        $capsule = new Capsule;
+        $capsule->addConnection(['driver' => 'pgsql', 'database' => 'x', 'host' => '127.0.0.1', 'username' => 'x', 'password' => 'x']);
+        $capsule->setAsGlobal();
+        $capsule->bootEloquent();
+
+        $model = new class extends Model {
+            use HasContextFilter;
+
+            protected $table = 'items';
+
+            protected array $searchColumns = ['name', 'sku'];
+        };
+
+        $builder = $model->newQuery();
+        $builder->applyContext(new QueryContext(search: 'tije'));
+
+        $sql = $this->toSql($builder);
+        $this->assertStringContainsString('"name"::text ilike ?', $sql);
+        $this->assertStringContainsString('"sku"::text ilike ?', $sql);
+        $this->assertContains('%tije%', $builder->getBindings());
+    }
 }

@@ -136,19 +136,19 @@ class FilterApplier
                     : $builder->whereNotNull($column),
                 FilterOperator::Like => $builder->where(function (Builder $q) use ($column, $operand): void {
                     foreach ((array) $operand as $term) {
-                        $q->orWhere($column, 'LIKE', '%'.$term.'%');
+                        $q->orWhereLike($column, '%'.$term.'%', caseSensitive: false);
                     }
                 }),
                 FilterOperator::Rlike,
                 FilterOperator::StartsWith => $builder->where(function (Builder $q) use ($column, $operand): void {
                     foreach ((array) $operand as $term) {
-                        $q->orWhere($column, 'LIKE', $term.'%');
+                        $q->orWhereLike($column, $term.'%', caseSensitive: false);
                     }
                 }),
                 FilterOperator::Llike,
                 FilterOperator::EndsWith => $builder->where(function (Builder $q) use ($column, $operand): void {
                     foreach ((array) $operand as $term) {
-                        $q->orWhere($column, 'LIKE', '%'.$term);
+                        $q->orWhereLike($column, '%'.$term, caseSensitive: false);
                     }
                 }),
             };

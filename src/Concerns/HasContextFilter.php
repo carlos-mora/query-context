@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Builder;
  *       // Optional — columns excluded from filtering (blacklist)
  *       protected array $filterProtected = ['password', 'remember_token'];
  *
- *       // Required to enable search — columns where LIKE is applied
+ *       // Required to enable search — columns matched with a case-insensitive LIKE
  *       protected array $searchColumns = ['title', 'description'];
  *   }
  *
@@ -54,7 +54,7 @@ trait HasContextFilter
 
         $query->where(function (Builder $q) use ($searchColumns, $term): void {
             foreach ($searchColumns as $column) {
-                $q->orWhere($column, 'LIKE', '%'.$term.'%');
+                $q->orWhereLike($column, '%'.$term.'%', caseSensitive: false);
             }
         });
     }

@@ -114,7 +114,7 @@ class FilterApplierTest extends TestCase
         FilterApplier::apply($builder, ['title' => ['like' => ['foo', 'bar']]]);
 
         $sql = $this->toSql($builder);
-        $this->assertStringContainsString('"title" LIKE ?', $sql);
+        $this->assertStringContainsString('"title" like ?', $sql);
     }
 
     public function test_rlike_operator_generates_starts_with(): void
@@ -122,7 +122,7 @@ class FilterApplierTest extends TestCase
         $builder = $this->builder();
         FilterApplier::apply($builder, ['name' => ['rlike' => 'foo']]);
 
-        $this->assertStringContainsString('"name" LIKE ?', $this->toSql($builder));
+        $this->assertStringContainsString('"name" like ?', $this->toSql($builder));
     }
 
     public function test_starts_with_alias_for_rlike(): void
@@ -130,7 +130,7 @@ class FilterApplierTest extends TestCase
         $builder = $this->builder();
         FilterApplier::apply($builder, ['name' => ['startsWith' => 'foo']]);
 
-        $this->assertStringContainsString('"name" LIKE ?', $this->toSql($builder));
+        $this->assertStringContainsString('"name" like ?', $this->toSql($builder));
     }
 
     public function test_llike_operator_generates_ends_with(): void
@@ -138,7 +138,7 @@ class FilterApplierTest extends TestCase
         $builder = $this->builder();
         FilterApplier::apply($builder, ['name' => ['llike' => 'bar']]);
 
-        $this->assertStringContainsString('"name" LIKE ?', $this->toSql($builder));
+        $this->assertStringContainsString('"name" like ?', $this->toSql($builder));
     }
 
     public function test_ends_with_alias_for_llike(): void
@@ -146,7 +146,7 @@ class FilterApplierTest extends TestCase
         $builder = $this->builder();
         FilterApplier::apply($builder, ['name' => ['endsWith' => 'bar']]);
 
-        $this->assertStringContainsString('"name" LIKE ?', $this->toSql($builder));
+        $this->assertStringContainsString('"name" like ?', $this->toSql($builder));
     }
 
     public function test_protected_column_is_skipped(): void
@@ -185,7 +185,7 @@ class FilterApplierTest extends TestCase
 
         $sql = $this->toSql($builder);
         $this->assertStringContainsString('"age" > ?', $sql);
-        $this->assertStringContainsString('"name" LIKE ?', $sql);
+        $this->assertStringContainsString('"name" like ?', $sql);
     }
 
     public function test_or_group_uses_or_where(): void
@@ -238,5 +238,35 @@ class FilterApplierTest extends TestCase
         $this->assertStringContainsString('"age" > ?', $sql);
         $this->assertStringContainsString('"status" = ?', $sql);
         $this->assertStringNotContainsString('or', strtolower($sql));
+    }
+
+    private function builderOn(string $driver): Builder
+    {
+        // Solo se compila el SQL: no hace falta un servidor real de PostgreSQL o MySQL.
+        $capsule = new Capsule;
+        $capsule->addConnection(['driver' => $driver, 'database' => 'x', 'host' => '127.0.0.1', 'username' => 'x', 'password' => 'x']);
+        $capsule->setAsGlobal();
+        $capsule->bootEloquent();
+
+        return $this->builder();
+    }
+
+    public function test_like_is_case_insensitive_on_postgres(): void
+    {
+        $builder = $this->builderOn('pgsql');
+        FilterApplier::apply($builder, ['title' => ['like' => 'Tijera']]);
+
+        $this->assertStringContainsString('"title"::text ilike ?', $this->toSql($builder));
+    }
+
+    public function test_like_is_case_insensitive_on_mysql(): void
+    {
+        $builder = $this->builderOn('mysql');
+        FilterApplier::apply($builder, ['title' => ['startsWith' => 'Tij']]);
+
+        // MySQL: LIKE sin BINARY, que con su collation por defecto no distingue mayúsculas.
+        $sql = $this->toSql($builder);
+        $this->assertStringContainsString('`title` like ?', $sql);
+        $this->assertStringNotContainsString('binary', $sql);
     }
 }
